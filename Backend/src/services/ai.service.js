@@ -791,30 +791,22 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
                         The resume should not sound like it is written by ai. It should be as close as human written.
                     `
 
-    const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-pro"].filter(Boolean)
-    let lastError = null
+//     const response = await ai.models.generateContent({
+//         model: "gemini-3-flash-preview",
+//         contents: prompt,
+//         config: {
+//             responseMimeType: "application/json",
+//             responseSchema: zodToJsonSchema(resumePdfSchema),
+//         }
+//     })
 
-    for (const modelName of modelsToTry) {
-        try {
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: zodToJsonSchema(resumePdfSchema),
-                }
-            })
-            const jsonContent = JSON.parse(response.text)
-            const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
-            return pdfBuffer
-        } catch (error) {
-            lastError = error
-            // try next model
-        }
-    }
 
-    // If all models fail, throw a helpful error
-    throw new Error(`Resume PDF generation failed after trying ${modelsToTry.length} models. ${formatGeminiError(lastError)}`)
-}
+//     const jsonContent = JSON.parse(response.text)
 
-module.exports = { generateInterviewReport, generateResumePdf }
+//     const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
+
+//     return pdfBuffer
+
+// }
+
+module.exports = { generateInterviewReport }
