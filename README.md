@@ -2,6 +2,28 @@
 A full-stack web application that leverages Generative AI to help job seekers prepare for interviews. Users can upload their resume and a target job description, and the system analyzes both to identify skill gaps, generate interview questions, and create a personalized preparation plan. It also supports secure authentication and future AI-powered resume optimization.
 
 ---
+## 🛠️ Tech Stack
+
+### 🚀 Backend
+[![Node.js](https://img.shields.io/badge/Node.js-Backend-green)](https://nodejs.org/)
+[![Express.js](https://img.shields.io/badge/Express.js-Framework-black)](https://expressjs.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Database-brightgreen)](https://www.mongodb.com/)
+[![Mongoose](https://img.shields.io/badge/Mongoose-ODM-red)](https://mongoosejs.com/)
+[![JWT](https://img.shields.io/badge/JWT-Auth-orange)](https://jwt.io/)
+[![bcryptjs](https://img.shields.io/badge/bcryptjs-Security-blue)](https://www.npmjs.com/package/bcryptjs)
+[![cookie-parser](https://img.shields.io/badge/cookie--parser-Middleware-lightgrey)](https://www.npmjs.com/package/cookie-parser)
+[![dotenv](https://img.shields.io/badge/dotenv-Config-yellow)](https://www.npmjs.com/package/dotenv)
+
+### 🎨 Frontend
+[![React.js](https://img.shields.io/badge/React.js-Frontend-blue)](https://react.dev/)
+[![React Router](https://img.shields.io/badge/React_Router-Routing-purple)](https://reactrouter.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-Styling-38B2AC)](https://tailwindcss.com/)
+
+### 🤖 AI Integration
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-AI-orange)](https://ai.google.dev/)
+[![Google AI Studio](https://img.shields.io/badge/AI_Studio-Platform-blue)](https://aistudio.google.com/)
+
+---
 
 ## 📌 Project Overview
 
@@ -13,26 +35,6 @@ This application is designed to streamline interview preparation using AI. It pe
 - 🧠 Personalized Preparation Plan Creation  
 - 📑 ATS-Friendly Resume Generation *(planned)*  
 - 🔐 Secure Authentication using JWT  
-
----
-
-## 🛠️ Tech Stack
-
-### Backend:
-- Node.js
-- Express.js
-- MongoDB (Mongoose ODM)
-- JWT (Authentication)
-- bcryptjs (Password Hashing)
-- cookie-parser
-- dotenv
-
-### Frontend (Planned):
-- React.js
-- scss
-
-### AI Integration (Planned):
-- Google Gemini API
 
 ---
 
