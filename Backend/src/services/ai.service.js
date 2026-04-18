@@ -791,22 +791,22 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
                         The resume should not sound like it is written by ai. It should be as close as human written.
                     `
 
-//     const response = await ai.models.generateContent({
-//         model: "gemini-3-flash-preview",
-//         contents: prompt,
-//         config: {
-//             responseMimeType: "application/json",
-//             responseSchema: zodToJsonSchema(resumePdfSchema),
-//         }
-//     })
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: zodToJsonSchema(resumePdfSchema),
+        }
+    })
 
 
-//     const jsonContent = JSON.parse(response.text)
+    const jsonContent = JSON.parse(response.text)
 
-//     const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
+    const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
 
-//     return pdfBuffer
+    return pdfBuffer
 
-// }
+}
 
-module.exports = { generateInterviewReport }
+module.exports = { generateInterviewReport, generateResumePdf };
