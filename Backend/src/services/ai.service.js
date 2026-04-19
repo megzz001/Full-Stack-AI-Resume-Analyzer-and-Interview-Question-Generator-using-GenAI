@@ -8,11 +8,23 @@ const ai = new GoogleGenAI({
 })
 
 function getCandidateModels() {
-    // Keep fallbacks conservative to reduce 404 model-not-found failures.
+    const envPrimary = String(process.env.GEMINI_MODEL || "").trim()
+    const envFallbacks = String(process.env.GEMINI_FALLBACK_MODELS || "")
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean)
+
+    // Try user-configured model first, then commonly available Gemini families.
     const models = [
+        envPrimary,
+        ...envFallbacks,
         "gemini-2.5-flash",
         "gemini-2.5-pro",
-        process.env.GEMINI_MODEL,
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
     ].filter(Boolean)
 
     // Keep order while removing duplicates.
@@ -38,6 +50,15 @@ function formatGeminiError(error) {
     return raw
 }
 
+function isModelUnavailableError(message) {
+    const lower = String(message || "").toLowerCase()
+    if (!lower) return false
+    return (
+        lower.includes("model") &&
+        (lower.includes("not found") || lower.includes("no available"))
+    )
+}
+
 function ensureArray(value) {
     if (Array.isArray(value)) return value
     if (value == null) return []
@@ -46,14 +67,19 @@ function ensureArray(value) {
 
 function parseObjectLikeString(value) {
     const raw = String(value || "").trim()
-    if (!raw.startsWith("{") || !raw.endsWith("}")) return null
+
+    const maybeObject = raw.startsWith("{") && raw.endsWith("}")
+        ? raw
+        : (raw.includes(":") ? `{${raw.replace(/^\{?|\}?$/g, "")}}` : "")
+
+    if (!maybeObject) return null
 
     try {
-        return JSON.parse(raw)
+        return JSON.parse(maybeObject)
     } catch {
         // Try a light conversion for model outputs that use single quotes.
         try {
-            const normalized = raw
+            const normalized = maybeObject
                 .replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":')
                 .replace(/:\s*'([^']*)'/g, ': "$1"')
             return JSON.parse(normalized)
@@ -121,6 +147,21 @@ function extractSkillGapFromLooseString(value) {
     return {
         skill: skillMatch[1],
         severity: severityMatch ? severityMatch[1].toLowerCase() : "medium",
+    }
+}
+
+function extractSkillGapFromKeyValueString(value) {
+    const raw = String(value || "").trim()
+    if (!raw) return null
+
+    const skillMatch = raw.match(/"?skill"?\s*:\s*"?([^",}]+(?:\s[^",}]*)?)"?/i)
+    const severityMatch = raw.match(/"?severity"?\s*:\s*"?(low|medium|high)"?/i)
+
+    if (!skillMatch) return null
+
+    return {
+        skill: String(skillMatch[1] || "").trim(),
+        severity: severityMatch ? String(severityMatch[1]).toLowerCase() : "medium",
     }
 }
 
@@ -246,7 +287,12 @@ function normalizeSkillGaps(value) {
                     item = parsed
                 } else {
                     const extracted = extractSkillGapFromLooseString(item)
-                    if (extracted) item = extracted
+                    if (extracted) {
+                        item = extracted
+                    } else {
+                        const keyValueExtracted = extractSkillGapFromKeyValueString(item)
+                        if (keyValueExtracted) item = keyValueExtracted
+                    }
                 }
             }
 
@@ -736,7 +782,7 @@ ${jobDescription}
     const lastMessage = formatGeminiError(lastError)
     const modelHint = `Tried models: ${triedModels.join(", ")}.`
 
-    if (lastMessage.toLowerCase().includes("unavailable") || lastMessage.toLowerCase().includes("overloaded") || lastMessage.toLowerCase().includes("quota")) {
+    if (lastMessage.toLowerCase().includes("unavailable") || lastMessage.toLowerCase().includes("overloaded") || lastMessage.toLowerCase().includes("quota") || isModelUnavailableError(lastMessage)) {
         const fallback = buildQuotaFallbackReport({ resume, selfDescription, jobDescription })
         const normalized = normalizeInterviewReport(fallback)
         const formatted = ensureConsistentReportFormat(normalized)
@@ -746,9 +792,6 @@ ${jobDescription}
             technicalQuestions: formatted.technicalQuestions.slice(0, formatted.technicalMinCount),
             behavioralQuestions: formatted.behavioralQuestions.slice(0, formatted.behavioralCount),
         })
-    }
-    if (lastMessage.toLowerCase().includes("model") && lastMessage.toLowerCase().includes("not")) {
-        throw new Error(`No available Gemini model was found for this API key/project. ${modelHint} Set GEMINI_MODEL to a model enabled in your account (for example: gemini-2.5-flash).`)
     }
     throw new Error(`Gemini content generation failed. ${modelHint} Last error: ${lastMessage}`)
 }

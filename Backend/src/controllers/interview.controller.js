@@ -1,6 +1,12 @@
 const pdfParse = require("pdf-parse")
+const path = require("path")
+const { pathToFileURL } = require("url")
 const { generateInterviewReport, generateResumePdf } = require("../services/ai.service")
 const interviewReportModel = require("../models/interviewReport.model")
+
+const pdfjsDistRoot = path.dirname(require.resolve("pdfjs-dist/package.json"))
+const standardFontDataPath = path.join(pdfjsDistRoot, "standard_fonts")
+const standardFontDataUrl = pathToFileURL(standardFontDataPath).href.replace(/\/?$/, "/")
 
 /**
  * @description Controller to generate interview report based on user self description, resume and job description.
@@ -28,8 +34,17 @@ async function generateInterviewReportController(req, res) {
                 return res.status(400).json({ message: "Only PDF resume is supported right now. Please upload a .pdf file." })
             }
 
-            const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
-            resumeText = String(resumeContent?.text || "").trim()
+            const parser = new pdfParse.PDFParse({
+                data: Uint8Array.from(req.file.buffer),
+                standardFontDataUrl,
+            })
+
+            try {
+                const resumeContent = await parser.getText()
+                resumeText = String(resumeContent?.text || "").trim()
+            } finally {
+                await parser.destroy()
+            }
         }
 
         const interViewReportByAi = await generateInterviewReport({

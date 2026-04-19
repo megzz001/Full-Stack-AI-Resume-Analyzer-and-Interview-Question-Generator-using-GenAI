@@ -1,16 +1,22 @@
-*{
+* {
     margin: 0%;
     padding: 0%;
     box-sizing: border-box;
 }
 
-html,body,:root{
+html {
+    font-size: clamp(16px, 0.5vw + 14px, 18px);
+}
+
+html,
+body,
+:root {
     width: 100%;
     font-family: 'Poppins', sans-serif;
     background-color: rgb(19, 18, 18);
     color: whitesmoke;
 }
 
-.highlight{
+.highlight {
     color: rgb(255, 0, 98);
 }

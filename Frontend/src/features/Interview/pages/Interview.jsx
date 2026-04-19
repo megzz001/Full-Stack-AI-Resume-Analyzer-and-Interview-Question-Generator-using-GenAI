@@ -36,7 +36,32 @@ function parseCombinedQuestionText(text) {
     }
 }
 
+function parseObjectLikeString(text) {
+    const raw = String(text || '').trim()
+    if (!raw) return null
+
+    const candidate = raw.startsWith('{') && raw.endsWith('}')
+        ? raw
+        : (raw.includes(':') ? `{${raw.replace(/^\{?|\}?$/g, '')}}` : '')
+
+    if (!candidate) return null
+
+    try {
+        return JSON.parse(candidate)
+    } catch {
+        try {
+            const normalized = candidate
+                .replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":')
+                .replace(/:\s*'([^']*)'/g, ': "$1"')
+            return JSON.parse(normalized)
+        } catch {
+            return null
+        }
+    }
+}
+
 function normalizeQuestionItem(item) {
+    const questionRaw = String(item?.question || '').trim()
     const combined = parseCombinedQuestionText(item?.question)
     if (combined && combined.question) {
         return {
@@ -46,11 +71,116 @@ function normalizeQuestionItem(item) {
         }
     }
 
+    if (questionRaw.toLowerCase() === 'intention' || questionRaw.toLowerCase() === 'answer') {
+        const reconstructed = parseCombinedQuestionText(JSON.stringify(item || {}))
+        if (reconstructed && reconstructed.question) {
+            return {
+                question: reconstructed.question,
+                intention: reconstructed.intention || String(item?.intention || '').trim(),
+                answer: reconstructed.answer || String(item?.answer || '').trim(),
+            }
+        }
+    }
+
     return {
-        question: String(item?.question || '').trim(),
+        question: questionRaw,
         intention: String(item?.intention || '').trim(),
         answer: String(item?.answer || '').trim(),
     }
+}
+
+function extractTaggedText(value) {
+    const raw = String(value || '').trim()
+    if (!raw) return null
+
+    const match = raw.match(/^"?(question|intention|answer)"?\s*:\s*"?([\s\S]*?)"?\s*[,]?$/i)
+    if (!match) return null
+
+    return {
+        tag: String(match[1] || '').toLowerCase(),
+        text: String(match[2] || '').trim(),
+    }
+}
+
+function normalizeQuestionCollection(items) {
+    const source = Array.isArray(items) ? items : []
+    const merged = []
+    let draft = null
+
+    const flushDraft = () => {
+        if (!draft) return
+        if (draft.question) {
+            merged.push({
+                question: draft.question,
+                intention: draft.intention,
+                answer: draft.answer,
+            })
+        }
+        draft = null
+    }
+
+    for (const item of source) {
+        const fromQuestion = extractTaggedText(item?.question)
+        const fromIntention = extractTaggedText(item?.intention)
+        const fromAnswer = extractTaggedText(item?.answer)
+        const tagged = fromQuestion || fromIntention || fromAnswer
+
+        if (!tagged) {
+            flushDraft()
+            const normalized = normalizeQuestionItem(item)
+            if (normalized.question) merged.push(normalized)
+            continue
+        }
+
+        if (!draft) {
+            draft = { question: '', intention: '', answer: '' }
+        }
+
+        if (tagged.tag === 'question') draft.question = tagged.text
+        if (tagged.tag === 'intention') draft.intention = tagged.text
+        if (tagged.tag === 'answer') draft.answer = tagged.text
+
+        if (draft.question && draft.intention && draft.answer) {
+            flushDraft()
+        }
+    }
+
+    flushDraft()
+    return merged
+}
+
+function normalizeSkillGapItem(item) {
+    if (!item) return null
+
+    if (typeof item === 'string') {
+        const parsed = parseObjectLikeString(item)
+        if (parsed && typeof parsed === 'object') {
+            return normalizeSkillGapItem(parsed)
+        }
+
+        const skillMatch = item.match(/"?skill"?\s*:\s*"?([^",}]+(?:\s[^",}]*)?)"?/i)
+        const severityMatch = item.match(/"?severity"?\s*:\s*"?(low|medium|high)"?/i)
+
+        if (skillMatch) {
+            return {
+                skill: String(skillMatch[1] || '').trim(),
+                severity: String(severityMatch?.[1] || 'medium').toLowerCase(),
+            }
+        }
+
+        const plain = String(item).trim()
+        return plain ? { skill: plain, severity: 'medium' } : null
+    }
+
+    if (typeof item === 'object') {
+        const skill = String(item.skill || item.name || '').trim()
+        const severityRaw = String(item.severity || 'medium').toLowerCase()
+        const severity = ['low', 'medium', 'high'].includes(severityRaw) ? severityRaw : 'medium'
+        if (!skill) return null
+        return { skill, severity }
+    }
+
+    return null
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -139,6 +269,13 @@ const Interview = () => {
         report.matchScore >= 80 ? 'score--high' :
             report.matchScore >= 60 ? 'score--mid' : 'score--low'
 
+    const normalizedSkillGaps = (Array.isArray(report.skillGaps) ? report.skillGaps : [])
+        .map(normalizeSkillGapItem)
+        .filter(Boolean)
+
+    const technicalQuestions = normalizeQuestionCollection(report.technicalQuestions)
+    const behavioralQuestions = normalizeQuestionCollection(report.behavioralQuestions)
+
 
     return (
         <div className='interview-page'>
@@ -182,10 +319,10 @@ const Interview = () => {
                         <section>
                             <div className='content-header'>
                                 <h2>Technical Questions</h2>
-                                <span className='content-header__count'>{report.technicalQuestions.length} questions</span>
+                                <span className='content-header__count'>{technicalQuestions.length} questions</span>
                             </div>
                             <div className='q-list'>
-                                {report.technicalQuestions.map((q, i) => (
+                                {technicalQuestions.map((q, i) => (
                                     <QuestionCard key={i} item={q} index={i} />
                                 ))}
                             </div>
@@ -196,10 +333,10 @@ const Interview = () => {
                         <section>
                             <div className='content-header'>
                                 <h2>Behavioral Questions</h2>
-                                <span className='content-header__count'>{report.behavioralQuestions.length} questions</span>
+                                <span className='content-header__count'>{behavioralQuestions.length} questions</span>
                             </div>
                             <div className='q-list'>
-                                {report.behavioralQuestions.map((q, i) => (
+                                {behavioralQuestions.map((q, i) => (
                                     <QuestionCard key={i} item={q} index={i} />
                                 ))}
                             </div>
@@ -242,7 +379,7 @@ const Interview = () => {
                     <div className='skill-gaps'>
                         <p className='skill-gaps__label'>Skill Gaps</p>
                         <div className='skill-gaps__list'>
-                            {report.skillGaps.map((gap, i) => (
+                            {normalizedSkillGaps.map((gap, i) => (
                                 <span key={i} className={`skill-tag skill-tag--${gap.severity}`}>
                                     {gap.skill} ({String(gap.severity || "medium").toUpperCase()})
                                 </span>
