@@ -1,17 +1,19 @@
 import axios from "axios";
+import { API_BASE_URL } from "../../../config/api.js";
 
 const api = axios.create({
-    baseURL: 'http://localhost:3000/api/auth',
+    baseURL: `${API_BASE_URL}/api/auth`,
     withCredentials: true
 });
 
-export async function register({username, email, password}){
+export async function register({ username, email, password }) {
 
-    try{
+    try {
         const response = await api.post('/register', {
             username,
-            email,  
-            password});
+            email,
+            password
+        });
         return response.data;
     } catch (error) {
         console.error('Error registering user:', error);
@@ -19,7 +21,7 @@ export async function register({username, email, password}){
     }
 }
 
-export async function login({email, password}) {
+export async function login({ email, password }) {
     try {
         const response = await api.post('/login', {
             email,
