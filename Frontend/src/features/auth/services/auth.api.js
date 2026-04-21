@@ -47,7 +47,7 @@ export async function getMe() {
         const response = await api.get('/get-me');
         return response.data;
     } catch (error) {
-        console.error('Error fetching current user:', error);
+        console.error('Error fetching current user due to :', error);
         throw error;
     }
 }
