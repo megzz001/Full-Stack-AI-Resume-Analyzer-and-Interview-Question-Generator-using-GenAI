@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import "../styles/home.scss"
 import { useInterview } from '../hooks/useInterview.js'
 import { useNavigate } from 'react-router'
@@ -6,8 +6,8 @@ import { useAuth } from '../../auth/Hooks/useAuth.js'
 
 const Home = () => {
 
-    const { loading, generateReport, reports } = useInterview()
-    const { logout } = useAuth()
+    const { loading, generateReport, reports, getReports } = useInterview()
+    const { logout, user } = useAuth()
     const [jobDescription, setJobDescription] = useState("")
     const [selfDescription, setSelfDescription] = useState("")
     const [errorMessage, setErrorMessage] = useState("")
@@ -15,6 +15,13 @@ const Home = () => {
     const resumeInputRef = useRef()
 
     const navigate = useNavigate()
+
+    // Fetch previous interview reports when user logs in
+    useEffect(() => {
+        if (user) {
+            getReports()
+        }
+    }, [user])
 
     const handleGenerateReport = async () => {
         const resumeFile = resumeInputRef.current.files[0]

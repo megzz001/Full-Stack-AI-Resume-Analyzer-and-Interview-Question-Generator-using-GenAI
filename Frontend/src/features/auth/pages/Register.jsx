@@ -45,8 +45,15 @@ const Register = () => {
             return;
         }
         setErrors({});
-        await handleRegister({ username, email, password });
-        navigate('/login');
+
+        try {
+            const userData = await handleRegister({ username, email, password });
+            if (userData?.user) {
+                navigate('/login', { replace: true });
+            }
+        } catch (error) {
+            setErrors({ email: 'Registration failed' });
+        }
     }
 
     const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'];

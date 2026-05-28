@@ -118,11 +118,11 @@ const interviewReportSchema = new mongoose.Schema({
     preparationPlan: [preparationPlanSchema],
     user: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "users"
+        ref: "User"
     },
     title: {
         type: String,
-        required: [true, "Interview report title is required"]  
+        required: [true, "Interview report title is required"]
     }
 }, {
     timestamps: true

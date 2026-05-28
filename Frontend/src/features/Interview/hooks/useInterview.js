@@ -2,11 +2,13 @@ import { getAllInterviewReports, generateInterviewReport, getInterviewReportById
 import { useContext, useEffect } from "react"
 import { InterviewContext } from "../Interview.context.jsx"
 import { useParams } from "react-router"
+import { AuthContext } from "../../auth/auth.context.jsx"
 
 
 export const useInterview = () => {
 
     const context = useContext(InterviewContext)
+    const authContext = useContext(AuthContext)
     const { interviewId } = useParams()
 
     if (!context) {
@@ -14,6 +16,7 @@ export const useInterview = () => {
     }
 
     const { loading, setLoading, report, setReport, reports, setReports } = context
+    const { user, loading: authLoading } = authContext || {}
 
     const generateReport = async ({ jobDescription, selfDescription, resumeFile }) => {
         setLoading(true)
@@ -99,12 +102,16 @@ export const useInterview = () => {
     }
 
     useEffect(() => {
+        if (authLoading || !user) {
+            return
+        }
+
         if (interviewId) {
             getReportById(interviewId)
         } else {
             getReports()
         }
-    }, [interviewId])
+    }, [authLoading, user, interviewId])
 
     return { loading, report, reports, generateReport, getReportById, getReports, getResumePdf, deleteReport }
 

@@ -28,8 +28,15 @@ const Login = () => {
             return;
         }
         setErrors({});
-        await handleLogin({ email, password });
-        navigate('/');
+
+        try {
+            const userData = await handleLogin({ email, password });
+            if (userData?.user) {
+                navigate('/', { replace: true });
+            }
+        } catch (error) {
+            setErrors({ password: 'Invalid email or password' });
+        }
     }
 
     return (
