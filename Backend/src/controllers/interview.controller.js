@@ -1,12 +1,16 @@
-const pdfParse = require("pdf-parse")
 const path = require("path")
 const { pathToFileURL } = require("url")
+const pdfjsLib = require("pdfjs-dist")
+const { getDocument } = require("pdfjs-dist/legacy/build/pdf")
 const { generateInterviewReport, generateResumePdf } = require("../services/ai.service")
 const interviewReportModel = require("../models/interviewReport.model")
 
 const pdfjsDistRoot = path.dirname(require.resolve("pdfjs-dist/package.json"))
 const standardFontDataPath = path.join(pdfjsDistRoot, "standard_fonts")
 const standardFontDataUrl = pathToFileURL(standardFontDataPath).href.replace(/\/?$/, "/")
+
+// Set worker script for pdfjs
+pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(pdfjsDistRoot, "build/pdf.worker.js")
 
 /**
  * @description Controller to generate interview report based on user self description, resume and job description.
@@ -34,16 +38,22 @@ async function generateInterviewReportController(req, res) {
                 return res.status(400).json({ message: "Only PDF resume is supported right now. Please upload a .pdf file." })
             }
 
-            const parser = new pdfParse.PDFParse({
-                data: Uint8Array.from(req.file.buffer),
-                standardFontDataUrl,
-            })
-
             try {
-                const resumeContent = await parser.getText()
-                resumeText = String(resumeContent?.text || "").trim()
-            } finally {
-                await parser.destroy()
+                const pdfDoc = await getDocument({
+                    data: req.file.buffer,
+                    standardFontDataUrl,
+                }).promise
+
+                let fullText = ""
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    const page = await pdfDoc.getPage(i)
+                    const textContent = await page.getTextContent()
+                    const pageText = textContent.items.map(item => item.str).join(" ")
+                    fullText += pageText + "\n"
+                }
+                resumeText = fullText.trim()
+            } catch (pdfError) {
+                throw new Error(`Failed to parse resume PDF: ${pdfError.message}`)
             }
         }
 

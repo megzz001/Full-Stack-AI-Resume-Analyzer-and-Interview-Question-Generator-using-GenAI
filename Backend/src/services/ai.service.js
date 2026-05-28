@@ -1,7 +1,6 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require("zod")
 const { zodToJsonSchema } = require("zod-to-json-schema")
-const puppeteer = require("puppeteer")
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GOOGLE_GENAI_API_KEY
@@ -797,22 +796,13 @@ ${jobDescription}
 }
 
 async function generatePdfFromHtml(htmlContent) {
-    const browser = await puppeteer.launch()
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: "networkidle0" })
-
-    const pdfBuffer = await page.pdf({
-        format: "A4", margin: {
-            top: "20mm",
-            bottom: "20mm",
-            left: "15mm",
-            right: "15mm"
-        }
-    })
-
-    await browser.close()
-
-    return pdfBuffer
+    // PDF generation via HTML-to-PDF is not supported in serverless environments.
+    // For production, consider using:
+    // - A dedicated service like html2pdf.js, Vercel Serverless Functions with a container,
+    //   or an external API like AWS Lambda with headless-chrome or HTML2PDF services.
+    // For now, return null to indicate PDF generation is not available.
+    console.warn("PDF generation requested but not available in serverless environment")
+    return null
 }
 
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
