@@ -1,29 +1,5 @@
 # Full-Stack-AI-Resume-Analyzer-and-Interview-Question-Generator-using-GenAI
 A full-stack web application that leverages Generative AI to help job seekers prepare for interviews. Users can upload their resume and a target job description, and the system analyzes both to identify skill gaps, generate interview questions, and create a personalized preparation plan. It also supports secure authentication and future AI-powered resume optimization.
-
----
-## 📸 Application Preview
-
-### 🔐 Authentication (Signup Page)
-![Signup](/assets/register.png)
-![Login](/assets/login.png)
-
-### 📊 Generated Reports & History
-![Reports](/assets/home.png)
-
-### 🎯 Custom Interview Plan Generator
-![Interview Plan](/assets/InterviewQuestion.png)
-
-### 🗺️ Preparation Roadmap
-![Preparation Roadmap](/assets/preparation.png)
-
-### 🗺️ Question Structure
-![Question](/assets/FullQuestion.png)
-
-### 🛄 Result
-![Result](/assets/Result.png)
----
-
 ## 🛠️ Tech Stack
 
 ### 🚀 Backend
@@ -45,6 +21,28 @@ A full-stack web application that leverages Generative AI to help job seekers pr
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-AI-orange)](https://ai.google.dev/)
 [![Google AI Studio](https://img.shields.io/badge/AI_Studio-Platform-blue)](https://aistudio.google.com/)
 
+---
+---
+## 📸 Application Preview
+
+### 🔐 Authentication (Signup Page)
+![Signup](/assets/register.png)
+![Login](/assets/login.png)
+
+### 📊 Generated Reports & History
+![Reports](/assets/home.png)
+
+### 🎯 Custom Interview Plan Generator
+![Interview Plan](/assets/InterviewQuestion.png)
+
+### 🗺️ Preparation Roadmap
+![Preparation Roadmap](/assets/preparation.png)
+
+### 🗺️ Question Structure
+![Question](/assets/FullQuestion.png)
+
+### 🛄 Result
+![Result](/assets/Result.png)
 ---
 
 ## 📌 Project Overview
