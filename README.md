@@ -25,7 +25,7 @@ A full-stack web application that leverages Generative AI to help job seekers pr
 ---
 ## 📸 Application Preview : Live Demo
 
-[![InterviewPro Preview ](assets/Dashboard.png)](https://cloudware-hierarchical-file-management-d0xj.onrender.com/)
+[![InterviewPro Preview ](assets/Dashboard.png)](https://full-stack-ai-resume-analyzer-and-coic.onrender.com/)
 
 ---
 
