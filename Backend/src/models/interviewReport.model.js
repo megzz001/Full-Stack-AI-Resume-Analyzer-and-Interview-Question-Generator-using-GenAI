@@ -96,6 +96,14 @@ const preparationPlanSchema = new mongoose.Schema({
     _id: false
 });
 
+// Add completed flag per day to persist user progress
+preparationPlanSchema.add({
+    completed: {
+        type: Boolean,
+        default: false,
+    }
+})
+
 const interviewReportSchema = new mongoose.Schema({
     jobDescription: {
         type: String,

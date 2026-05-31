@@ -5,10 +5,13 @@ const connectDB = require('./config/database');
 
 const app = express();
 
-const allowedOrigins = (process.env.CLIENT_ORIGINS || 'http://localhost:5173,http://localhost:5174')
+const defaultOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
+const envOrigins = String(process.env.CLIENT_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])]
 
 app.use(cookieParser());
 app.use(express.json());

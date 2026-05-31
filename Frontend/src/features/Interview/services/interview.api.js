@@ -66,3 +66,32 @@ export const generateResumePdf = async ({ interviewReportId }) => {
 
     return response.data
 }
+
+/**
+ * @description Evaluate a practice interview answer against a stored report question.
+ */
+export const evaluatePracticeAnswer = async ({ interviewReportId, questionType, questionIndex, answer }) => {
+    const response = await api.post(`/api/interview/practice/${interviewReportId}`, {
+        questionType,
+        questionIndex,
+        answer,
+    })
+
+    return response.data
+}
+
+/**
+ * @description Generate or refresh preparation plan for an existing interview report
+ */
+export const generatePreparationPlan = async ({ interviewReportId }) => {
+    const response = await api.post(`/api/interview/plan/${interviewReportId}`)
+    return response.data
+}
+
+/**
+ * @description Update preparation plan progress for an interview report
+ */
+export const updatePreparationProgress = async ({ interviewReportId, dayIndex, completed }) => {
+    const response = await api.patch(`/api/interview/plan/${interviewReportId}/progress`, { dayIndex, completed })
+    return response.data
+}

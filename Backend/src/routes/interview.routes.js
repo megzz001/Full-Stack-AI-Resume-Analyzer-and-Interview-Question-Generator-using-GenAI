@@ -10,7 +10,7 @@ const interviewRouter = express.Router();
  * @description Generate interview report in strict JSON format
  * @access Private
  */
-interviewRouter.post('/', authMiddleware.authUser ,upload.single("resume"), interviewController.generateInterviewReportController);
+interviewRouter.post('/', authMiddleware.authUser, upload.single("resume"), interviewController.generateInterviewReportController);
 
 /**
  * @route GET /api/interview/report/:interviewId
@@ -40,5 +40,28 @@ interviewRouter.delete('/:interviewId', authMiddleware.authUser, interviewContro
  * @access private
  */
 interviewRouter.post("/resume/pdf/:interviewReportId", authMiddleware.authUser, interviewController.generateResumePdfController)
+
+/**
+ * @route POST /api/interview/practice/:interviewReportId
+ * @description Evaluate a practice interview answer for a specific report
+ * @access Private
+ */
+interviewRouter.post('/practice/:interviewReportId', authMiddleware.authUser, interviewController.evaluateInterviewAnswerController)
+
+
+/**
+ * @route POST /api/interview/plan/:interviewReportId
+ * @description Generate or refresh the preparation plan for an existing interview report
+ * @access Private
+ */
+interviewRouter.post('/plan/:interviewReportId', authMiddleware.authUser, interviewController.generatePreparationPlanController)
+
+
+/**
+ * @route PATCH /api/interview/plan/:interviewReportId/progress
+ * @description Update completed state for a specific day in the plan
+ * @access Private
+ */
+interviewRouter.patch('/plan/:interviewReportId/progress', authMiddleware.authUser, interviewController.updatePreparationProgressController)
 
 module.exports = interviewRouter;

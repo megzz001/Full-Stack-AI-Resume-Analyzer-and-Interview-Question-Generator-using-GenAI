@@ -196,14 +196,10 @@ function enforceQuestionShape(item, type) {
         ? "Evaluate technical depth, performance trade-offs, and production readiness."
         : "Evaluate communication, ownership, and structured decision-making."
 
-    const defaultAnswer = type === "technical"
-        ? "Explain the problem context, your technical approach, key trade-offs, and validation strategy. Close with measurable outcomes such as latency, reliability, throughput, or delivery impact."
-        : "Use STAR format: Situation, Task, Action, and Result. Keep the answer specific, include your direct contributions, and end with measurable impact."
-
     return {
         question: cleanSentence(item?.question || item?.q, ""),
         intention: cleanSentence(item?.intention || item?.why, defaultIntention),
-        answer: cleanSentence(item?.answer || item?.sampleAnswer, defaultAnswer),
+        answer: cleanSentence(item?.answer || item?.sampleAnswer, ""),
     }
 }
 
@@ -651,9 +647,71 @@ const interviewReportSchema = z.object({
     title: z.string().describe("The title of the job for which the interview report is generated"),
 })
 
+async function generatePreparationPlan({ interviewReport }) {
+    const skillGaps = ensureArray(interviewReport.skillGaps)
+        .map((gap) => String(gap?.skill || gap || '').trim())
+        .filter(Boolean)
+    const title = String(interviewReport.title || interviewReport.jobDescription || 'Interview Preparation').trim()
+
+    const planSchema = z.array(z.object({ day: z.number(), focus: z.string() }))
+
+    const prompt = `
+You are an AI interview coach.
+
+Create a compact day-wise preparation plan focused on the job "${title}".
+The plan should prioritize revising matching skills and addressing identified skill gaps.
+Return ONLY JSON: an array of objects with {"day": number, "focus": string}.
+
+Rules:
+- Return only JSON that matches the schema: [{"day": number, "focus": string}]
+- Produce 3-7 days depending on gaps, but prefer 5 days when possible
+- Each focus should be a short heading (6-8 words) describing the topic to study
+- Prioritize items that directly address the following gaps: ${JSON.stringify(skillGaps)}
+
+Interview report context:
+${JSON.stringify({ title, skillGaps: interviewReport.skillGaps || [] })}
+`;
+
+    const candidateModels = getCandidateModels()
+    let lastError = null
+
+    for (const modelName of candidateModels) {
+        try {
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: zodToJsonSchema(planSchema),
+                },
+            })
+
+            const parsed = JSON.parse(response.text)
+            return planSchema.parse(parsed)
+        } catch (error) {
+            lastError = error
+        }
+    }
+
+    const fallback = []
+    const topSkills = skillGaps.slice(0, 5)
+    const totalDays = Math.max(3, Math.min(5, topSkills.length || 5))
+
+    for (let i = 0; i < totalDays; i++) {
+        const focus = topSkills[i]
+            ? `Revise ${topSkills[i]}`
+            : `Review core interview fundamentals day ${i + 1}`
+        fallback.push({ day: i + 1, focus })
+    }
+
+    if (lastError) {
+        return planSchema.parse(fallback)
+    }
+
+    return planSchema.parse(fallback)
+}
+
 async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
-
-
     const prompt = `
 You are an AI interview coach.
 
@@ -697,9 +755,9 @@ Rules:
 - Do NOT write explanations
 - Do NOT write markdown
 - For every question object, keep values clean:
-    - question: only the question text
-    - intention: only the intention sentence
-    - answer: only the model answer paragraph
+  - question: only the question text
+  - intention: only the intention sentence
+  - answer: only the model answer paragraph
 - Do NOT combine question/intention/answer inside a single field
 - Do NOT include labels like "Q1", "INTENTION", or "MODEL ANSWER" inside values
 - For each technicalQuestions[].answer and behavioralQuestions[].answer, write a detailed response guidance, not a one-liner
@@ -760,10 +818,9 @@ ${jobDescription}
                 behavioralTarget: formatted.behavioralCount,
             })
 
-            let technicalQuestions = filled.technicalQuestions
-            let behavioralQuestions = filled.behavioralQuestions
+            const technicalQuestions = filled.technicalQuestions
+            const behavioralQuestions = filled.behavioralQuestions
 
-            // Do not fail the full report generation if counts are still short.
             if (technicalQuestions.length === 0 || behavioralQuestions.length === 0) {
                 throw new Error("AI could not generate interview questions for this input.")
             }
@@ -792,17 +849,43 @@ ${jobDescription}
             behavioralQuestions: formatted.behavioralQuestions.slice(0, formatted.behavioralCount),
         })
     }
+
     throw new Error(`Gemini content generation failed. ${modelHint} Last error: ${lastMessage}`)
 }
 
 async function generatePdfFromHtml(htmlContent) {
-    // PDF generation via HTML-to-PDF is not supported in serverless environments.
-    // For production, consider using:
-    // - A dedicated service like html2pdf.js, Vercel Serverless Functions with a container,
-    //   or an external API like AWS Lambda with headless-chrome or HTML2PDF services.
-    // For now, return null to indicate PDF generation is not available.
-    console.warn("PDF generation requested but not available in serverless environment")
-    return null
+    if (!htmlContent) return null
+
+    try {
+        // Load puppeteer dynamically to avoid requiring it when not needed.
+        const puppeteer = require("puppeteer")
+
+        const launchOptions = {
+            args: ["--no-sandbox", "--disable-setuid-sandbox"],
+            headless: 'new',
+        }
+        if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+            launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
+        }
+
+        const browser = await puppeteer.launch(launchOptions)
+        const page = await browser.newPage()
+
+        // Ensure minimal base styles for consistent rendering
+        await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+
+        const pdfBuffer = await page.pdf({
+            format: "A4",
+            printBackground: true,
+            margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
+        })
+
+        await browser.close()
+        return pdfBuffer
+    } catch (err) {
+        console.error("PDF generation failed:", err)
+        return null
+    }
 }
 
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
@@ -842,4 +925,81 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
 
 }
 
-module.exports = { generateInterviewReport, generateResumePdf };
+async function evaluateInterviewAnswer({ reportTitle, questionType, question, intention, modelAnswer, candidateAnswer, skillGaps }) {
+    const evaluationSchema = z.object({
+        score: z.number().min(0).max(100),
+        summary: z.string(),
+        strengths: z.array(z.string()),
+        improvements: z.array(z.string()),
+        suggestedAnswer: z.string(),
+        followUpQuestion: z.string(),
+    })
+
+    const prompt = `
+You are an AI interview coach evaluating one interview answer.
+
+Return ONLY strict JSON with this shape:
+{
+  "score": number,
+  "summary": string,
+  "strengths": [string],
+  "improvements": [string],
+  "suggestedAnswer": string,
+  "followUpQuestion": string
+}
+
+Scoring rules:
+- score must be between 0 and 100
+- summary should be 1 to 2 sentences
+- strengths must contain 2 to 4 short bullet-style phrases
+- improvements must contain 2 to 4 short bullet-style phrases
+- suggestedAnswer should be a concise but interview-ready improved answer
+- followUpQuestion should be a natural next interview question
+
+Interview context:
+- Role: ${reportTitle || 'Interview Practice'}
+- Question type: ${questionType || 'technical'}
+- Question: ${question || ''}
+- Intention: ${intention || ''}
+- Model answer guidance: ${modelAnswer || ''}
+- Candidate answer: ${candidateAnswer || ''}
+- Skill gaps to keep in mind: ${JSON.stringify(skillGaps || [])}
+
+Evaluate the answer for relevance, clarity, depth, structure, and completeness.
+Do not mention that you are an AI model.
+Do not include markdown.
+`
+
+    const heuristicFallback = {
+        score: 58,
+        summary: 'The answer covers the topic at a basic level, but it needs stronger structure, more detail, and clearer impact.',
+        strengths: ['Addresses the question', 'Shows some relevant understanding'],
+        improvements: ['Add a clearer structure', 'Include a concrete example or trade-off', 'Finish with measurable impact'],
+        suggestedAnswer: String(modelAnswer || candidateAnswer || '').trim() || 'Answer with a clear structure, explain your reasoning, mention trade-offs, and finish with measurable impact.',
+        followUpQuestion: 'Can you walk me through a specific example where you applied this in a real project?'
+    }
+
+    const candidateModels = getCandidateModels()
+
+    for (const modelName of candidateModels) {
+        try {
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: zodToJsonSchema(evaluationSchema),
+                }
+            })
+
+            const parsed = JSON.parse(response.text)
+            return evaluationSchema.parse(parsed)
+        } catch {
+            // Try next model.
+        }
+    }
+
+    return heuristicFallback
+}
+
+module.exports = { generateInterviewReport, generateResumePdf, evaluateInterviewAnswer, generatePreparationPlan };

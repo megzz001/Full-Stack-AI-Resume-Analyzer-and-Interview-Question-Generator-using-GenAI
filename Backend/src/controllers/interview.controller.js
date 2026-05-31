@@ -1,16 +1,13 @@
 const path = require("path")
 const { pathToFileURL } = require("url")
-const pdfjsLib = require("pdfjs-dist")
-const { getDocument } = require("pdfjs-dist/legacy/build/pdf")
-const { generateInterviewReport, generateResumePdf } = require("../services/ai.service")
+const { generateInterviewReport, generateResumePdf, evaluateInterviewAnswer } = require("../services/ai.service")
+const { generatePreparationPlan } = require("../services/ai.service")
 const interviewReportModel = require("../models/interviewReport.model")
 
 const pdfjsDistRoot = path.dirname(require.resolve("pdfjs-dist/package.json"))
 const standardFontDataPath = path.join(pdfjsDistRoot, "standard_fonts")
 const standardFontDataUrl = pathToFileURL(standardFontDataPath).href.replace(/\/?$/, "/")
-
-// Set worker script for pdfjs
-pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(pdfjsDistRoot, "build/pdf.worker.js")
+const pdfjsModuleUrl = pathToFileURL(path.join(pdfjsDistRoot, "legacy/build/pdf.mjs")).href
 
 /**
  * @description Controller to generate interview report based on user self description, resume and job description.
@@ -39,14 +36,15 @@ async function generateInterviewReportController(req, res) {
             }
 
             try {
-                const pdfDoc = await getDocument({
-                    data: req.file.buffer,
+                const pdfjsLib = await import(pdfjsModuleUrl)
+                const pdfDocument = await pdfjsLib.getDocument({
+                    data: new Uint8Array(req.file.buffer),
                     standardFontDataUrl,
                 }).promise
 
                 let fullText = ""
-                for (let i = 1; i <= pdfDoc.numPages; i++) {
-                    const page = await pdfDoc.getPage(i)
+                for (let i = 1; i <= pdfDocument.numPages; i++) {
+                    const page = await pdfDocument.getPage(i)
                     const textContent = await page.getTextContent()
                     const pageText = textContent.items.map(item => item.str).join(" ")
                     fullText += pageText + "\n"
@@ -189,4 +187,105 @@ async function generateResumePdfController(req, res) {
     res.send(pdfBuffer)
 }
 
-module.exports = { generateInterviewReportController, getInterviewReportByIdController, getAllInterviewReportsController, deleteInterviewReportController, generateResumePdfController }
+/**
+ * @description Controller to evaluate a single interview practice answer.
+ */
+async function evaluateInterviewAnswerController(req, res) {
+    try {
+        const { interviewReportId } = req.params
+        const { answer, questionType = 'technical', questionIndex = 0 } = req.body
+
+        const interviewReport = await interviewReportModel.findOne({ _id: interviewReportId, user: req.user.id })
+
+        if (!interviewReport) {
+            return res.status(404).json({ message: 'Interview report not found.' })
+        }
+
+        const questionList = questionType === 'behavioral'
+            ? interviewReport.behavioralQuestions
+            : interviewReport.technicalQuestions
+
+        const currentQuestion = Array.isArray(questionList) ? questionList[Number(questionIndex) || 0] : null
+
+        if (!currentQuestion) {
+            return res.status(400).json({ message: 'Practice question not found.' })
+        }
+
+        const evaluation = await evaluateInterviewAnswer({
+            reportTitle: interviewReport.title,
+            questionType,
+            question: currentQuestion.question,
+            intention: currentQuestion.intention,
+            modelAnswer: currentQuestion.answer,
+            candidateAnswer: String(answer || '').trim(),
+            skillGaps: interviewReport.skillGaps,
+        })
+
+        return res.status(200).json({
+            message: 'Practice answer evaluated successfully.',
+            evaluation,
+        })
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Failed to evaluate practice answer.',
+            error: error.message,
+        })
+    }
+}
+
+/**
+ * @description Controller to generate or refresh the preparation plan for an existing report using AI
+ */
+async function generatePreparationPlanController(req, res) {
+    try {
+        const { interviewReportId } = req.params
+
+        const interviewReport = await interviewReportModel.findOne({ _id: interviewReportId, user: req.user.id })
+
+        if (!interviewReport) {
+            return res.status(404).json({ message: 'Interview report not found.' })
+        }
+
+        const plan = await generatePreparationPlan({ interviewReport })
+
+        interviewReport.preparationPlan = plan
+        await interviewReport.save()
+
+        return res.status(200).json({ message: 'Preparation plan generated successfully.', preparationPlan: plan })
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to generate preparation plan.', error: error.message })
+    }
+}
+
+/**
+ * @description Controller to update preparation plan progress (toggle completed)
+ */
+async function updatePreparationProgressController(req, res) {
+    try {
+        const { interviewReportId } = req.params
+        const { dayIndex, completed } = req.body
+
+        if (typeof dayIndex !== 'number') {
+            return res.status(400).json({ message: 'dayIndex (number) is required in body.' })
+        }
+
+        const interviewReport = await interviewReportModel.findOne({ _id: interviewReportId, user: req.user.id })
+
+        if (!interviewReport) {
+            return res.status(404).json({ message: 'Interview report not found.' })
+        }
+
+        if (!Array.isArray(interviewReport.preparationPlan) || dayIndex < 0 || dayIndex >= interviewReport.preparationPlan.length) {
+            return res.status(400).json({ message: 'Invalid dayIndex.' })
+        }
+
+        interviewReport.preparationPlan[dayIndex].completed = Boolean(completed)
+        await interviewReport.save()
+
+        return res.status(200).json({ message: 'Progress updated.', preparationPlan: interviewReport.preparationPlan })
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to update progress.', error: error.message })
+    }
+}
+
+module.exports = { generateInterviewReportController, getInterviewReportByIdController, getAllInterviewReportsController, deleteInterviewReportController, generateResumePdfController, evaluateInterviewAnswerController, generatePreparationPlanController, updatePreparationProgressController }
