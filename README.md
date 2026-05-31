@@ -23,26 +23,10 @@ A full-stack web application that leverages Generative AI to help job seekers pr
 
 ---
 ---
-## 📸 Application Preview
+## 📸 Application Preview : Live Demo
 
-### 🔐 Authentication (Signup Page)
-![Signup](/assets/register.png)
-![Login](/assets/login.png)
+[![InterviewPro Preview ](assets/Dashboard.png)](https://cloudware-hierarchical-file-management-d0xj.onrender.com/)
 
-### 📊 Generated Reports & History
-![Reports](/assets/home.png)
-
-### 🎯 Custom Interview Plan Generator
-![Interview Plan](/assets/InterviewQuestion.png)
-
-### 🗺️ Preparation Roadmap
-![Preparation Roadmap](/assets/preparation.png)
-
-### 🗺️ Question Structure
-![Question](/assets/FullQuestion.png)
-
-### 🛄 Result
-![Result](/assets/Result.png)
 ---
 
 ## 📌 Project Overview
