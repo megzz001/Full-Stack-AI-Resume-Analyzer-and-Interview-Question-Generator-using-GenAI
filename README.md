@@ -31,7 +31,7 @@ A full-stack web application that leverages Generative AI to help job seekers pr
 
 ## 🚀 Render Deployment
 
-The backend is configured for Render via [render.yaml](render.yaml). Use the `Backend` folder as the service root, run `npm install` for the build step, and `npm start` for the start step. Do not use `npm start` during the build phase, because that keeps the process alive and causes the deploy to fail.
+The backend is configured for Render via [render.yaml](render.yaml). Use the `Backend` folder as the service root. The build step should only install dependencies, and the start step should launch the server. The included Render config uses `npm install && npm run render-build` for build and `npm run render-start` for start, which avoids the common mistake of running `npm start` during the build phase.
 
 ---
 

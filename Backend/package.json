@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "render-build": "echo \"No build step required\"",
+    "render-start": "node server.js",
     "dev": "npx nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

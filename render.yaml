@@ -3,8 +3,8 @@ services:
     name: full-stack-ai-resume-analyzer-and-interview-question-generator
     env: node
     rootDir: Backend
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: npm install && npm run render-build
+    startCommand: npm run render-start
     envVars:
       - key: NODE_ENV
         value: production
