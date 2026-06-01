@@ -2,10 +2,10 @@ require('dotenv').config();
 const app = require('./src/app');
 
 const PORT = process.env.PORT || 3000;
-const runningOnRender = process.env.RENDER === 'true';
-const renderRuntimeConcurrency = process.env.RENDER_WEB_CONCURRENCY;
+const runningInBuildPipeline = process.env.CI === 'true';
+const runningOnRenderRuntime = process.env.RENDER === 'true' && Boolean(process.env.RENDER_WEB_CONCURRENCY);
 
-if (runningOnRender && !renderRuntimeConcurrency && require.main === module) {
+if (require.main === module && runningInBuildPipeline && !runningOnRenderRuntime) {
   console.error('Refusing to start the HTTP server during the Render build phase. Use the build command for install-only steps and the start command for node server.js.');
   process.exit(1);
 }
