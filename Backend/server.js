@@ -2,6 +2,13 @@ require('dotenv').config();
 const app = require('./src/app');
 
 const PORT = process.env.PORT || 3000;
+const runningOnRender = process.env.RENDER === 'true';
+const renderRuntimeConcurrency = process.env.RENDER_WEB_CONCURRENCY;
+
+if (runningOnRender && !renderRuntimeConcurrency && require.main === module) {
+  console.error('Refusing to start the HTTP server during the Render build phase. Use the build command for install-only steps and the start command for node server.js.');
+  process.exit(1);
+}
 
 // Start the server only when run directly (local dev). When required by a serverless
 // platform like Vercel, export the `app` so the platform can invoke it.
