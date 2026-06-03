@@ -2,8 +2,9 @@ const { GoogleGenAI } = require("@google/genai")
 const { z } = require("zod")
 const { zodToJsonSchema } = require("zod-to-json-schema")
 
+// FIX: support both secret names — GEMINI_API_KEY is the standard Replit secret name
 const ai = new GoogleGenAI({
-    apiKey: process.env.GOOGLE_GENAI_API_KEY
+    apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY
 })
 
 function getCandidateModels() {
@@ -13,7 +14,6 @@ function getCandidateModels() {
         .map((m) => m.trim())
         .filter(Boolean)
 
-    // Try user-configured model first, then commonly available Gemini families.
     const models = [
         envPrimary,
         ...envFallbacks,
@@ -26,7 +26,6 @@ function getCandidateModels() {
         "gemini-1.5-pro",
     ].filter(Boolean)
 
-    // Keep order while removing duplicates.
     return [...new Set(models)]
 }
 
@@ -76,7 +75,6 @@ function parseObjectLikeString(value) {
     try {
         return JSON.parse(maybeObject)
     } catch {
-        // Try a light conversion for model outputs that use single quotes.
         try {
             const normalized = maybeObject
                 .replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":')
@@ -109,7 +107,6 @@ function extractQAFromSectionText(value) {
     const raw = String(value || "").trim()
     if (!raw) return null
 
-    // Only parse section-style blobs when explicit labels are present.
     const lower = raw.toLowerCase()
     const hasSectionLabels =
         /\bintention\b/.test(lower) ||
@@ -118,8 +115,6 @@ function extractQAFromSectionText(value) {
 
     if (!hasSectionLabels) return null
 
-    // Supports outputs like:
-    // Q1. ...\nINTENTION ...\nMODEL ANSWER ...
     const questionMatch = raw.match(/^(?:q\d+\.?\s*)?([\s\S]*?)(?=\n\s*intention\b|\n\s*model\s*answer\b|$)/i)
     const intentionMatch = raw.match(/intention\s*:?\s*([\s\S]*?)(?=\n\s*model\s*answer\b|$)/i)
     const answerMatch = raw.match(/model\s*answer\s*:?\s*([\s\S]*?)$/i)
@@ -412,7 +407,7 @@ function buildQuotaFallbackReport({ resume, selfDescription, jobDescription }) {
             answer: "A process is an independent execution unit with its own memory space, while threads run within a process and share the same memory and resources. Processes are safer because failures are isolated, but they are heavier in terms of creation and context switching overhead. Threads are lighter and better for concurrency, but require synchronization to avoid race conditions and deadlocks. This distinction helps troubleshooting: process-level issues often crash whole services, whereas thread-level issues usually appear as partial hangs, lock contention, or high CPU in specific workers."
         },
         {
-            question: "Imagine you're monitoring a Linux server and notice consistently high CPU usage. Describe your troubleshooting steps.",
+            question: "Imagine you are monitoring a Linux server and notice consistently high CPU usage. Describe your troubleshooting steps.",
             intention: "To evaluate the candidate's practical troubleshooting skills for server-side issues common in L1/L2 support.",
             answer: "I would begin by confirming the scope and timeline of the issue, then use tools like top, htop, pidstat, and sar to identify which process or thread is consuming CPU. Next, I would check whether the load is user-space, system, or iowait, and correlate it with recent deployments, cron jobs, traffic spikes, or backup jobs. I would review application and system logs for repeated errors, retries, or tight loops. If needed, I would profile the process, apply temporary mitigation such as throttling or restarting unhealthy workers, and then implement a permanent fix based on root cause."
         },
@@ -422,8 +417,8 @@ function buildQuotaFallbackReport({ resume, selfDescription, jobDescription }) {
             answer: "ACID stands for Atomicity, Consistency, Isolation, and Durability. Atomicity means a transaction is all-or-nothing, so partial failures do not leave corrupted state. Consistency ensures each committed transaction keeps data within business and schema rules. Isolation ensures concurrent transactions do not produce invalid intermediate results such as dirty reads or lost updates. Durability guarantees committed data survives crashes. Together, these properties protect data correctness in operations like payments, inventory updates, and account transfers where incorrect intermediate state can cause real business loss."
         },
         {
-            question: "You've identified a slow query in your MongoDB-backed MERN application. How would you approach optimizing it?",
-            intention: "To evaluate practical skills in database performance tuning within a specialized MERN stack.",
+            question: "You have identified a slow query in your MongoDB-backed application. How would you approach optimizing it?",
+            intention: "To evaluate practical skills in database performance tuning.",
             answer: "I would inspect query patterns and run explain plans to verify whether indexes are being used efficiently. Then I would optimize by creating compound indexes that match filter and sort order, and reduce payload size by projecting only required fields. I would also check for anti-patterns such as unbounded array scans, regex filters without anchors, and unnecessary aggregation stages. If workload allows, I would add caching for expensive repeated reads and review write overhead caused by extra indexes. Finally, I would validate improvements by comparing latency and throughput before and after changes."
         },
         {
@@ -498,6 +493,11 @@ function buildQuotaFallbackReport({ resume, selfDescription, jobDescription }) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────
+// generateMissingQuestionsFromAI
+// FIX: prompt now does explicit JD extraction + resume cross-check before
+//      generating questions, and every question must name a JD skill/tech
+// ─────────────────────────────────────────────────────────────
 async function generateMissingQuestionsFromAI({ resume, selfDescription, jobDescription, existingTechnicalQuestions, existingBehavioralQuestions, neededTechnicalCount, neededBehavioralCount }) {
     const missingSchema = z.object({
         technicalQuestions: z.array(z.object({
@@ -513,42 +513,55 @@ async function generateMissingQuestionsFromAI({ resume, selfDescription, jobDesc
     })
 
     const prompt = `
-You are an AI interview coach.
+You are a senior technical interviewer. Generate HIGHLY TARGETED interview questions for a specific role.
 
-Generate ONLY missing interview questions based on the candidate profile and job description.
+════════════════════════════════════
+JOB DESCRIPTION (source of truth):
+════════════════════════════════════
+${jobDescription}
 
-Return strict JSON with this format only:
+════════════════════════════════════
+CANDIDATE RESUME:
+════════════════════════════════════
+${resume || "(no resume provided)"}
+
+════════════════════════════════════
+CANDIDATE SELF-DESCRIPTION:
+════════════════════════════════════
+${selfDescription || "(not provided)"}
+
+════════════════════════════════════
+ALREADY GENERATED — DO NOT REPEAT:
+════════════════════════════════════
+Technical (already covered):
+${JSON.stringify(existingTechnicalQuestions || [])}
+
+Behavioral (already covered):
+${JSON.stringify(existingBehavioralQuestions || [])}
+
+════════════════════════════════════
+YOUR TASK:
+════════════════════════════════════
+Step 1 — List every skill, technology, framework, tool, and responsibility named in the JD.
+Step 2 — Identify which of those are NOT yet covered by the existing questions above.
+Step 3 — Generate ${neededTechnicalCount} NEW technical questions and ${neededBehavioralCount} NEW behavioral questions targeting ONLY the uncovered JD skills from Step 2.
+
+STRICT RULES:
+- Every technical question MUST reference a specific skill or technology named in the JD
+- Every behavioral question MUST map to a responsibility described in the JD
+- DO NOT generate generic software engineering questions not tied to this specific JD
+- DO NOT repeat or rephrase any question already in the existing lists
+- question: only the question text — no numbering, no labels
+- intention: one sentence — exactly what JD requirement this tests
+- answer: minimum 80 words with concrete steps, named JD technologies, trade-offs, and measurable outcomes
+
+Return strict JSON only — no markdown, no preamble:
 {
   "technicalQuestions": [{"question": string, "intention": string, "answer": string}],
   "behavioralQuestions": [{"question": string, "intention": string, "answer": string}]
 }
 
-Rules:
-- Return ONLY JSON
-- Do not repeat existing questions
-- Generate up to ${neededTechnicalCount} technical questions and up to ${neededBehavioralCount} behavioral questions
-- If needed count is 0 for a section, return an empty array for that section
-- Keep this exact object shape for each question: { "question", "intention", "answer" }
-- question must contain only the interview question text (no "Q1", no labels, no JSON fragments)
-- intention must contain only one concise sentence (no "INTENTION" label)
-- answer must contain only the model answer paragraph (no "MODEL ANSWER" label)
-- intention must be one concise sentence
-- answer must be one detailed paragraph with clear practical guidance
-
-Existing Technical Questions (do not repeat):
-${JSON.stringify(existingTechnicalQuestions || [])}
-
-Existing Behavioral Questions (do not repeat):
-${JSON.stringify(existingBehavioralQuestions || [])}
-
-Candidate Resume:
-${resume}
-
-Self Description:
-${selfDescription}
-
-Job Description:
-${jobDescription}
+If neededTechnicalCount or neededBehavioralCount is 0, return an empty array for that section.
 `
 
     const candidateModels = getCandidateModels()
@@ -566,8 +579,8 @@ ${jobDescription}
 
             const parsed = JSON.parse(response.text)
             return missingSchema.parse(parsed)
-        } catch {
-            // try next model
+        } catch (err) {
+            console.error(`[generateMissingQuestionsFromAI] model ${modelName} failed:`, formatGeminiError(err))
         }
     }
 
@@ -586,7 +599,6 @@ async function fillQuestionsIteratively({
     let tech = dedupeQuestions(technicalQuestions, "technical")
     let beh = dedupeQuestions(behavioralQuestions, "behavioral")
 
-    // Smaller batch requests are more reliable than one large strict request.
     for (let attempt = 0; attempt < 4; attempt++) {
         const missingTechnical = Math.max(0, technicalTarget - tech.length)
         const missingBehavioral = Math.max(0, behavioralTarget - beh.length)
@@ -622,170 +634,118 @@ async function fillQuestionsIteratively({
     }
 }
 
-
 const interviewReportSchema = z.object({
-    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job describe"),
+    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job description"),
     technicalQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
+        question: z.string().describe("The technical question to be asked in the interview"),
+        intention: z.string().describe("The intention of the interviewer behind asking this question"),
         answer: z.string().describe("A detailed model answer strategy with practical steps, technical depth, trade-offs, and measurable impact. It should be interview-ready and not generic.")
     })).describe("Technical questions that can be asked in the interview along with their intention and how to answer them"),
     behavioralQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
+        question: z.string().describe("The behavioral question to be asked in the interview"),
+        intention: z.string().describe("The intention of the interviewer behind asking this question"),
         answer: z.string().describe("A detailed model answer strategy using STAR with specific actions, ownership, collaboration, and measurable outcomes.")
     })).describe("Behavioral questions that can be asked in the interview along with their intention and how to answer them"),
     skillGaps: z.array(z.object({
         skill: z.string().describe("The skill which the candidate is lacking"),
-        severity: z.enum(["low", "medium", "high"]).describe("The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances")
+        severity: z.enum(["low", "medium", "high"]).describe("The severity of this skill gap")
     })).describe("List of skill gaps in the candidate's profile along with their severity"),
     preparationPlan: z.array(z.object({
         day: z.number().describe("The day number in the preparation plan, starting from 1"),
-        focus: z.string().describe("The main focus of this day in the preparation plan, e.g. data structures, system design, mock interviews etc."),
-        tasks: z.array(z.string()).describe("List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.")
-    })).describe("A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively"),
+        focus: z.string().describe("The main focus of this day"),
+        tasks: z.array(z.string()).describe("List of tasks to be done on this day")
+    })).describe("A day-wise preparation plan for the candidate"),
     title: z.string().describe("The title of the job for which the interview report is generated"),
 })
 
-async function generatePreparationPlan({ interviewReport }) {
-    const skillGaps = ensureArray(interviewReport.skillGaps)
-        .map((gap) => String(gap?.skill || gap || '').trim())
-        .filter(Boolean)
-    const title = String(interviewReport.title || interviewReport.jobDescription || 'Interview Preparation').trim()
-
-    const planSchema = z.array(z.object({ day: z.number(), focus: z.string() }))
-
-    const prompt = `
-You are an AI interview coach.
-
-Create a compact day-wise preparation plan focused on the job "${title}".
-The plan should prioritize revising matching skills and addressing identified skill gaps.
-Return ONLY JSON: an array of objects with {"day": number, "focus": string}.
-
-Rules:
-- Return only JSON that matches the schema: [{"day": number, "focus": string}]
-- Produce 3-7 days depending on gaps, but prefer 5 days when possible
-- Each focus should be a short heading (6-8 words) describing the topic to study
-- Prioritize items that directly address the following gaps: ${JSON.stringify(skillGaps)}
-
-Interview report context:
-${JSON.stringify({ title, skillGaps: interviewReport.skillGaps || [] })}
-`;
-
-    const candidateModels = getCandidateModels()
-    let lastError = null
-
-    for (const modelName of candidateModels) {
-        try {
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: prompt,
-                config: {
-                    responseMimeType: 'application/json',
-                    responseSchema: zodToJsonSchema(planSchema),
-                },
-            })
-
-            const parsed = JSON.parse(response.text)
-            return planSchema.parse(parsed)
-        } catch (error) {
-            lastError = error
-        }
-    }
-
-    const fallback = []
-    const topSkills = skillGaps.slice(0, 5)
-    const totalDays = Math.max(3, Math.min(5, topSkills.length || 5))
-
-    for (let i = 0; i < totalDays; i++) {
-        const focus = topSkills[i]
-            ? `Revise ${topSkills[i]}`
-            : `Review core interview fundamentals day ${i + 1}`
-        fallback.push({ day: i + 1, focus })
-    }
-
-    if (lastError) {
-        return planSchema.parse(fallback)
-    }
-
-    return planSchema.parse(fallback)
-}
-
+// ─────────────────────────────────────────────────────────────
+// generateInterviewReport
+// FIX: 3-step chain-of-thought prompt — extract JD → cross-check resume →
+//      generate. skillGaps = JD skills ABSENT from resume only.
+//      Errors are logged so fallback triggers are visible in logs.
+// ─────────────────────────────────────────────────────────────
 async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
     const prompt = `
-You are an AI interview coach.
+You are a senior technical interviewer and career coach with deep hiring expertise.
 
-Generate a structured interview report strictly in this JSON format:
+Produce a HIGHLY TARGETED, PERSONALISED interview preparation report by analysing the candidate's specific background against the job description below.
 
-{
-  "matchScore": number,
-  "title": string,
-  "technicalQuestions": [
-    {
-      "question": string,
-      "intention": string,
-      "answer": string
-    }
-  ],
-  "behavioralQuestions": [
-    {
-      "question": string,
-      "intention": string,
-      "answer": string
-    }
-  ],
-  "skillGaps": [
-    {
-      "skill": string,
-      "severity": "low" | "medium" | "high"
-    }
-  ],
-  "preparationPlan": [
-    {
-      "day": number,
-      "focus": string,
-      "tasks": [string]
-    }
-  ]
-}
-
-Rules:
-- Return ONLY JSON
-- Do NOT add extra fields
-- Do NOT write explanations
-- Do NOT write markdown
-- For every question object, keep values clean:
-  - question: only the question text
-  - intention: only the intention sentence
-  - answer: only the model answer paragraph
-- Do NOT combine question/intention/answer inside a single field
-- Do NOT include labels like "Q1", "INTENTION", or "MODEL ANSWER" inside values
-- For each technicalQuestions[].answer and behavioralQuestions[].answer, write a detailed response guidance, not a one-liner
-- Each answer must be at least 80 words and include: context, actions, reasoning/trade-offs, and measurable outcomes
-- For behavioral answers, prefer STAR structure explicitly
-- For technical answers, include architecture or implementation depth (e.g., scaling, data model, caching, testing, monitoring)
-- Keep identical object structure for every question: { "question": string, "intention": string, "answer": string }
-- Generate at least 10 technical questions and exactly 3 behavioral questions
-- Intention must be one concise sentence, and answer must be one detailed paragraph
-
-Candidate Resume:
-${resume}
-
-Self Description:
-${selfDescription}
-
-Job Description:
+════════════════════════════════════
+JOB DESCRIPTION:
+════════════════════════════════════
 ${jobDescription}
-`;
+
+════════════════════════════════════
+CANDIDATE RESUME:
+════════════════════════════════════
+${resume || "(no resume provided)"}
+
+════════════════════════════════════
+CANDIDATE SELF-DESCRIPTION:
+════════════════════════════════════
+${selfDescription || "(not provided)"}
+
+════════════════════════════════════
+FOLLOW THESE THREE STEPS IN ORDER:
+════════════════════════════════════
+
+STEP 1 — Extract from the Job Description:
+Read the JD and identify every skill, technology, framework, language, tool, methodology, and responsibility it mentions (both explicit and implied). Note the exact job title and seniority level.
+
+STEP 2 — Analyse the Candidate Profile:
+For each JD requirement from Step 1, mark it as:
+  PRESENT  — clearly demonstrated in the resume or self-description
+  WEAK     — mentioned but with limited depth or only tangentially
+  ABSENT   — no evidence at all in the resume
+
+STEP 3 — Generate the report using your Step 1 and Step 2 analysis:
+
+matchScore (0–100):
+  Count PRESENT skills vs total JD requirements. Be realistic: 3+ ABSENT core requirements = score below 65.
+
+title:
+  The exact job title from the JD.
+
+technicalQuestions (at least 10):
+  - EVERY question MUST test a specific skill or technology named in the JD
+  - Name the specific JD technology IN the question text (e.g. "This role uses Redis — walk me through how you would use it to...")
+  - Mix depth: conceptual, hands-on implementation, architecture/design
+  - DO NOT generate generic CS questions not tied to this specific JD
+  - question: the question text naming the specific JD skill/tech
+  - intention: one sentence — what JD requirement this tests and why it matters for THIS role
+  - answer: minimum 80 words — concrete steps, trade-offs, named JD technologies, measurable outcomes
+
+behavioralQuestions (exactly 3):
+  - Tailor to the responsibilities and team dynamics described in THIS JD
+  - question: behavioral question tied to a JD responsibility
+  - intention: one sentence — what aspect of THIS role this assesses
+  - answer: STAR-structured, minimum 80 words, specific actions, collaboration, quantified result
+
+skillGaps:
+  - List ONLY skills that are ABSENT or WEAK in the candidate profile AND required/mentioned in the JD
+  - DO NOT list skills the candidate already has
+  - DO NOT fabricate generic gaps — only gaps you identified in Step 2
+  - severity: high = core JD requirement completely missing, medium = partially covered, low = nice-to-have not present
+  - Return [] if the candidate covers all JD requirements well
+
+preparationPlan (5–7 days):
+  - Each day must target a specific JD skill or gap identified in Step 2
+  - focus: short heading naming the specific JD skill
+  - tasks: 3 concrete action items specific to that JD skill
+
+Return ONLY valid JSON. No markdown, no preamble, no explanation outside the JSON.
+`
 
     const candidateModels = getCandidateModels()
-
     let lastError = null
+    let isQuotaError = false
     const triedModels = []
 
     for (const modelName of candidateModels) {
         try {
+            console.log(`[generateInterviewReport] Trying model: ${modelName}`)
             triedModels.push(modelName)
+
             const response = await ai.models.generateContent({
                 model: modelName,
                 contents: prompt,
@@ -808,41 +768,67 @@ ${jobDescription}
                 throw new Error("AI returned template placeholders instead of real content.")
             }
 
-            const filled = await fillQuestionsIteratively({
-                resume,
-                selfDescription,
-                jobDescription,
-                technicalQuestions: formatted.technicalQuestions,
-                behavioralQuestions: formatted.behavioralQuestions,
-                technicalTarget: formatted.technicalMinCount,
-                behavioralTarget: formatted.behavioralCount,
-            })
+            const TECHNICAL_TARGET = 10
+            const BEHAVIORAL_TARGET = 3
 
-            const technicalQuestions = filled.technicalQuestions
-            const behavioralQuestions = filled.behavioralQuestions
+            if (
+                formatted.technicalQuestions.length < TECHNICAL_TARGET ||
+                formatted.behavioralQuestions.length < BEHAVIORAL_TARGET
+            ) {
+                console.log(`[generateInterviewReport] Got ${formatted.technicalQuestions.length} tech / ${formatted.behavioralQuestions.length} behavioral — filling iteratively`)
+                const filled = await fillQuestionsIteratively({
+                    resume,
+                    selfDescription,
+                    jobDescription,
+                    technicalQuestions: formatted.technicalQuestions,
+                    behavioralQuestions: formatted.behavioralQuestions,
+                    technicalTarget: TECHNICAL_TARGET,
+                    behavioralTarget: BEHAVIORAL_TARGET,
+                })
+                formatted.technicalQuestions = filled.technicalQuestions
+                formatted.behavioralQuestions = filled.behavioralQuestions
+            }
 
-            if (technicalQuestions.length === 0 || behavioralQuestions.length === 0) {
+            if (formatted.technicalQuestions.length === 0 || formatted.behavioralQuestions.length === 0) {
                 throw new Error("AI could not generate interview questions for this input.")
             }
 
             return interviewReportSchema.parse({
                 ...formatted,
-                technicalQuestions,
-                behavioralQuestions: behavioralQuestions.slice(0, formatted.behavioralCount),
+                technicalQuestions: formatted.technicalQuestions,
+                behavioralQuestions: formatted.behavioralQuestions.slice(0, formatted.behavioralCount),
             })
-        } catch (error) {
-            lastError = error
+        } catch (err) {
+            const message = formatGeminiError(err)
+            console.error(`[generateInterviewReport] model ${modelName} failed: ${message}`)
+            lastError = err
+
+            if (
+                String(err?.message || "").includes("RESOURCE_EXHAUSTED") ||
+                err?.status === 429 ||
+                err?.status === 503
+            ) {
+                isQuotaError = true
+                break
+            }
+
+            continue
         }
     }
 
     const lastMessage = formatGeminiError(lastError)
-    const modelHint = `Tried models: ${triedModels.join(", ")}.`
+    console.warn(`[generateInterviewReport] All models failed — using fallback. Tried: ${triedModels.join(", ")}. Last error: ${lastMessage}`)
 
-    if (lastMessage.toLowerCase().includes("unavailable") || lastMessage.toLowerCase().includes("overloaded") || lastMessage.toLowerCase().includes("quota") || isModelUnavailableError(lastMessage)) {
+    if (
+        isQuotaError ||
+        lastMessage.toLowerCase().includes("unavailable") ||
+        lastMessage.toLowerCase().includes("overloaded") ||
+        lastMessage.toLowerCase().includes("quota") ||
+        isModelUnavailableError(lastMessage)
+    ) {
         const fallback = buildQuotaFallbackReport({ resume, selfDescription, jobDescription })
         const normalized = normalizeInterviewReport(fallback)
         const formatted = ensureConsistentReportFormat(normalized)
-
         return interviewReportSchema.parse({
             ...formatted,
             technicalQuestions: formatted.technicalQuestions.slice(0, formatted.technicalMinCount),
@@ -850,19 +836,21 @@ ${jobDescription}
         })
     }
 
-    throw new Error(`Gemini content generation failed. ${modelHint} Last error: ${lastMessage}`)
+    throw new Error(`Gemini content generation failed. Tried: ${triedModels.join(", ")}. Last error: ${lastMessage}`)
 }
 
+// ─────────────────────────────────────────────────────────────
+// generatePdfFromHtml — unchanged helper
+// ─────────────────────────────────────────────────────────────
 async function generatePdfFromHtml(htmlContent) {
     if (!htmlContent) return null
 
     try {
-        // Load puppeteer dynamically to avoid requiring it when not needed.
         const puppeteer = require("puppeteer")
 
         const launchOptions = {
             args: ["--no-sandbox", "--disable-setuid-sandbox"],
-            headless: 'new',
+            headless: "new",
         }
         if (process.env.PUPPETEER_EXECUTABLE_PATH) {
             launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
@@ -870,8 +858,6 @@ async function generatePdfFromHtml(htmlContent) {
 
         const browser = await puppeteer.launch(launchOptions)
         const page = await browser.newPage()
-
-        // Ensure minimal base styles for consistent rendering
         await page.setContent(htmlContent, { waitUntil: "networkidle0" })
 
         const pdfBuffer = await page.pdf({
@@ -883,49 +869,117 @@ async function generatePdfFromHtml(htmlContent) {
         await browser.close()
         return pdfBuffer
     } catch (err) {
-        console.error("PDF generation failed:", err)
+        console.error("[generatePdfFromHtml] PDF generation failed:", err)
         return null
     }
 }
 
+// ─────────────────────────────────────────────────────────────
+// generateResumePdf
+// FIX 1: Removed hardcoded "gemini-3-flash-preview" (that model doesn't exist)
+// FIX 2: Now uses the same getCandidateModels() fallback loop as every other function
+// FIX 3: Prompt is more explicit — tailor to JD, ATS-friendly, human-sounding
+// FIX 4: Errors are caught and logged; throws a clear message instead of crashing
+// ─────────────────────────────────────────────────────────────
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
-
     const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer")
+        html: z.string().describe("Complete, self-contained HTML for the resume, ready to be rendered to PDF by Puppeteer")
     })
 
-    const prompt = `Generate resume for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
-                        the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
-                        The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
-                        The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
-                        you can highlight the content using some colors or different font styles but the overall design should be simple and professional use times new roman font please.
-                        The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
-                        The resume should not be so lengthy, it should ideally be only 1 page long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.
-                        The resume should not sound like it is written by ai. It should be as close as human written.
-                    `
+    const prompt = `
+You are an expert resume writer and career coach.
 
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(resumePdfSchema),
+Generate a polished, ATS-friendly, human-sounding resume in HTML for the candidate below.
+Tailor the resume specifically to the provided Job Description — highlight matching skills, reframe experience using JD keywords, and emphasise the most relevant achievements.
+
+════════════════════════════════════
+JOB DESCRIPTION (tailor the resume to this):
+════════════════════════════════════
+${jobDescription || "(not provided — write a strong general resume)"}
+
+════════════════════════════════════
+CANDIDATE RESUME / EXPERIENCE:
+════════════════════════════════════
+${resume || "(not provided)"}
+
+════════════════════════════════════
+CANDIDATE SELF-DESCRIPTION:
+════════════════════════════════════
+${selfDescription || "(not provided)"}
+
+════════════════════════════════════
+HTML REQUIREMENTS:
+════════════════════════════════════
+- Return a SINGLE complete HTML string in the "html" field — no external CSS files, no external fonts via @import (use system fonts only: "Times New Roman", serif)
+- All styles must be inline or in a <style> block inside <head>
+- Design: clean, professional, single-column or two-column layout
+- Use subtle colour accents (dark navy or dark grey headings, white background) — no bright colours
+- Font: "Times New Roman", serif for body; slightly larger bold for name and section headings
+- The rendered PDF must fit on ONE A4 page (210mm × 297mm) — keep content concise, use compact spacing
+- Do NOT add a photo placeholder
+- Sections to include (only if data is available): Contact Info, Professional Summary, Skills, Work Experience, Education, Projects (optional), Certifications (optional)
+- ATS rules: use plain section headings (EXPERIENCE, SKILLS, EDUCATION), avoid tables for layout, avoid text in images, use standard bullet points (•)
+- The writing must sound natural and human — avoid AI-sounding phrases like "spearheaded", "leveraged synergies", "drove impactful outcomes"
+- Quantify achievements where possible (e.g. "reduced load time by 40%", "managed team of 5")
+- Do NOT include the string "Generated by AI" or any meta-comment anywhere in the HTML
+
+Return ONLY valid JSON with a single key "html" containing the complete HTML string.
+`
+
+    const candidateModels = getCandidateModels()
+    let lastError = null
+
+    for (const modelName of candidateModels) {
+        try {
+            console.log(`[generateResumePdf] Trying model: ${modelName}`)
+
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: zodToJsonSchema(resumePdfSchema),
+                }
+            })
+
+            const jsonContent = JSON.parse(response.text)
+            const validated = resumePdfSchema.parse(jsonContent)
+
+            if (!validated.html || validated.html.trim().length < 100) {
+                throw new Error("Model returned empty or too-short HTML for resume.")
+            }
+
+            const pdfBuffer = await generatePdfFromHtml(validated.html)
+            return pdfBuffer
+        } catch (err) {
+            const message = formatGeminiError(err)
+            console.error(`[generateResumePdf] model ${modelName} failed: ${message}`)
+            lastError = err
+
+            // Quota/rate-limit — no point trying more models
+            if (
+                String(err?.message || "").includes("RESOURCE_EXHAUSTED") ||
+                err?.status === 429 ||
+                err?.status === 503
+            ) {
+                break
+            }
         }
-    })
+    }
 
-
-    const jsonContent = JSON.parse(response.text)
-
-    const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
-
-    return pdfBuffer
-
+    const errMsg = formatGeminiError(lastError)
+    console.error(`[generateResumePdf] All models failed. Last error: ${errMsg}`)
+    throw new Error(`Resume PDF generation failed: ${errMsg}`)
 }
 
-async function evaluateInterviewAnswer({ reportTitle, questionType, question, intention, modelAnswer, candidateAnswer, skillGaps }) {
+// ─────────────────────────────────────────────────────────────
+// evaluateInterviewAnswer
+// FIX 1: Prompt now uses full JD + role context so feedback is role-specific
+// FIX 2: suggestedAnswer is explicitly asked to reference JD technologies
+// FIX 3: followUpQuestion must be grounded in the same JD skill being tested
+// FIX 4: Errors are logged; fallback is returned with a warning, not silently
+// ─────────────────────────────────────────────────────────────
+async function evaluateInterviewAnswer({ reportTitle, questionType, question, intention, modelAnswer, candidateAnswer, skillGaps, jobDescription }) {
     const evaluationSchema = z.object({
         score: z.number().min(0).max(100),
         summary: z.string(),
@@ -936,47 +990,72 @@ async function evaluateInterviewAnswer({ reportTitle, questionType, question, in
     })
 
     const prompt = `
-You are an AI interview coach evaluating one interview answer.
+You are a senior interviewer evaluating a candidate's answer for a specific role.
 
-Return ONLY strict JSON with this shape:
-{
-  "score": number,
-  "summary": string,
-  "strengths": [string],
-  "improvements": [string],
-  "suggestedAnswer": string,
-  "followUpQuestion": string
-}
+════════════════════════════════════
+ROLE CONTEXT:
+════════════════════════════════════
+Role: ${reportTitle || "Interview Practice"}
+Question type: ${questionType || "technical"}
+${jobDescription ? `Job Description:\n${jobDescription}` : ""}
+Identified skill gaps for this candidate: ${JSON.stringify(skillGaps || [])}
 
-Scoring rules:
-- score must be between 0 and 100
-- summary should be 1 to 2 sentences
-- strengths must contain 2 to 4 short bullet-style phrases
-- improvements must contain 2 to 4 short bullet-style phrases
-- suggestedAnswer should be a concise but interview-ready improved answer
-- followUpQuestion should be a natural next interview question
+════════════════════════════════════
+QUESTION BEING EVALUATED:
+════════════════════════════════════
+Question: ${question || ""}
+What the interviewer is testing (intention): ${intention || ""}
+Model answer guidance: ${modelAnswer || ""}
 
-Interview context:
-- Role: ${reportTitle || 'Interview Practice'}
-- Question type: ${questionType || 'technical'}
-- Question: ${question || ''}
-- Intention: ${intention || ''}
-- Model answer guidance: ${modelAnswer || ''}
-- Candidate answer: ${candidateAnswer || ''}
-- Skill gaps to keep in mind: ${JSON.stringify(skillGaps || [])}
+════════════════════════════════════
+CANDIDATE'S ANSWER:
+════════════════════════════════════
+${candidateAnswer || "(no answer provided)"}
 
-Evaluate the answer for relevance, clarity, depth, structure, and completeness.
-Do not mention that you are an AI model.
-Do not include markdown.
+════════════════════════════════════
+YOUR EVALUATION TASK:
+════════════════════════════════════
+Evaluate the candidate's answer against the question intention and the role requirements above.
+
+score (0–100):
+  - 85–100: answer is complete, well-structured, mentions specific technologies/examples, and has measurable outcomes
+  - 65–84: solid answer with minor gaps in depth, examples, or outcomes
+  - 40–64: partially addresses the question but lacks structure, specifics, or impact
+  - 0–39: off-topic, very thin, or completely missing key points
+
+summary (1–2 sentences):
+  Specific assessment of how well this answer fits the role and question — reference the role or question topic directly.
+
+strengths (2–4 items):
+  Specific things the candidate did well — reference what they actually said, not generic praise.
+
+improvements (2–4 items):
+  Specific gaps vs the question intention and role requirements — name what was missing or underdeveloped.
+
+suggestedAnswer:
+  A concise but interview-ready improved answer that:
+  - Directly addresses the question intention
+  - References specific technologies or methods relevant to this role
+  - Follows STAR structure for behavioral, or step-by-step + trade-offs for technical
+  - Ends with a measurable outcome
+  Minimum 80 words.
+
+followUpQuestion:
+  A natural next interview question an interviewer would ask to probe deeper on the same JD skill or topic just discussed.
+
+Rules:
+- Do not mention that you are an AI
+- Do not include markdown formatting
+- Return ONLY valid JSON matching the schema
 `
 
     const heuristicFallback = {
         score: 58,
-        summary: 'The answer covers the topic at a basic level, but it needs stronger structure, more detail, and clearer impact.',
-        strengths: ['Addresses the question', 'Shows some relevant understanding'],
-        improvements: ['Add a clearer structure', 'Include a concrete example or trade-off', 'Finish with measurable impact'],
-        suggestedAnswer: String(modelAnswer || candidateAnswer || '').trim() || 'Answer with a clear structure, explain your reasoning, mention trade-offs, and finish with measurable impact.',
-        followUpQuestion: 'Can you walk me through a specific example where you applied this in a real project?'
+        summary: "The answer covers the topic at a basic level but needs stronger structure, more depth, and clearer impact.",
+        strengths: ["Addresses the question", "Shows some relevant understanding"],
+        improvements: ["Add a clearer structure (STAR for behavioral, step-by-step for technical)", "Include a concrete example with specific technologies", "Finish with a measurable outcome"],
+        suggestedAnswer: String(modelAnswer || candidateAnswer || "").trim() || "Answer with a clear structure, explain your reasoning and trade-offs, reference specific technologies relevant to the role, and finish with measurable impact.",
+        followUpQuestion: "Can you walk me through a specific example where you applied this in a real project?"
     }
 
     const candidateModels = getCandidateModels()
@@ -987,19 +1066,114 @@ Do not include markdown.
                 model: modelName,
                 contents: prompt,
                 config: {
-                    responseMimeType: 'application/json',
+                    responseMimeType: "application/json",
                     responseSchema: zodToJsonSchema(evaluationSchema),
                 }
             })
 
             const parsed = JSON.parse(response.text)
             return evaluationSchema.parse(parsed)
-        } catch {
-            // Try next model.
+        } catch (err) {
+            console.error(`[evaluateInterviewAnswer] model ${modelName} failed:`, formatGeminiError(err))
         }
     }
 
+    console.warn("[evaluateInterviewAnswer] All models failed — returning heuristic fallback.")
     return heuristicFallback
 }
 
-module.exports = { generateInterviewReport, generateResumePdf, evaluateInterviewAnswer, generatePreparationPlan };
+// ─────────────────────────────────────────────────────────────
+// generatePreparationPlan
+// FIX 1: Now accepts jobDescription so plan is anchored to actual JD skills
+// FIX 2: Prompt ties every day to a specific JD requirement or skill gap
+// FIX 3: Tasks are concrete and JD-specific, not generic advice
+// FIX 4: Schema now includes tasks[] so the full plan is returned
+// ─────────────────────────────────────────────────────────────
+async function generatePreparationPlan({ interviewReport, jobDescription }) {
+    const skillGaps = ensureArray(interviewReport.skillGaps)
+        .map((gap) => String(gap?.skill || gap || "").trim())
+        .filter(Boolean)
+    const title = String(interviewReport.title || "Interview Preparation").trim()
+
+    const planSchema = z.array(z.object({
+        day: z.number(),
+        focus: z.string(),
+        tasks: z.array(z.string()),
+    }))
+
+    const prompt = `
+You are an expert interview coach creating a targeted preparation plan.
+
+════════════════════════════════════
+JOB DESCRIPTION:
+════════════════════════════════════
+${jobDescription || "(not provided — use skill gaps and title below)"}
+
+════════════════════════════════════
+ROLE: ${title}
+SKILL GAPS TO CLOSE:
+${skillGaps.length > 0 ? skillGaps.map((s, i) => `${i + 1}. ${s}`).join("\n") : "No specific gaps identified — reinforce all JD requirements"}
+════════════════════════════════════
+
+Create a 5-day preparation plan. Rules:
+- Each day must focus on a SPECIFIC skill or technology named in the JD (not generic advice)
+- Prioritise days that address the skill gaps listed above
+- focus: short heading (5–8 words) naming the specific JD skill for that day
+- tasks: exactly 3 concrete action items per day — name specific resources, exercises, or practice activities tied to that JD skill
+  Good example: "Implement a JWT refresh token flow in Express and test with Postman"
+  Bad example: "Review core concepts" or "Practice interview questions" (too generic)
+- Return exactly 5 days
+
+Return ONLY a JSON array — no markdown, no explanation:
+[{"day": number, "focus": string, "tasks": [string, string, string]}]
+`
+
+    const candidateModels = getCandidateModels()
+
+    for (const modelName of candidateModels) {
+        try {
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: zodToJsonSchema(planSchema),
+                },
+            })
+
+            const parsed = JSON.parse(response.text)
+            return planSchema.parse(parsed)
+        } catch (err) {
+            console.error(`[generatePreparationPlan] model ${modelName} failed:`, formatGeminiError(err))
+        }
+    }
+
+    // Fallback: build a plan from skill gaps with concrete task descriptions
+    console.warn("[generatePreparationPlan] All models failed — using fallback plan.")
+    const fallback = []
+    const topSkills = skillGaps.slice(0, 5)
+    const totalDays = Math.max(3, Math.min(5, topSkills.length || 5))
+
+    for (let i = 0; i < totalDays; i++) {
+        const skill = topSkills[i]
+        fallback.push({
+            day: i + 1,
+            focus: skill ? `Revise and practise: ${skill}` : `Review core ${title} fundamentals`,
+            tasks: skill
+                ? [
+                    `Study the fundamentals of ${skill} and how it applies to the ${title} role`,
+                    `Build or trace through a hands-on example using ${skill}`,
+                    `Prepare two interview answers demonstrating your ${skill} experience with measurable outcomes`,
+                ]
+                : [
+                    `Review the most important technical topics for ${title}`,
+                    `Practise explaining your past experience using STAR format`,
+                    `Prepare two questions to ask the interviewer about the role and team`,
+                ],
+        })
+    }
+
+    return planSchema.parse(fallback)
+}
+
+module.exports = { generateInterviewReport, generateResumePdf, evaluateInterviewAnswer, generatePreparationPlan }
