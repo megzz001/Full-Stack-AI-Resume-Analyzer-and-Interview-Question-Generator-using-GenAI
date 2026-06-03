@@ -9,4 +9,4 @@ services:
       - key: NODE_ENV
         value: production
       - key: CLIENT_ORIGINS
-        value: "https://cloudware-hierarchical-file-management-d0xj.onrender.com,https://full-stack-ai-resume-analyzer-and-c1sm.onrender.com"
+        value: "https://full-stack-ai-resume-analyzer-and-coic.onrender.com,https://cloudware-hierarchical-file-management-d0xj.onrender.com,https://full-stack-ai-resume-analyzer-and-c1sm.onrender.com"

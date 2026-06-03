@@ -5,7 +5,12 @@ const connectDB = require('./config/database');
 
 const app = express();
 
-const defaultOrigins = ['https://cloudware-hierarchical-file-management-d0xj.onrender.com']
+const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://full-stack-ai-resume-analyzer-and-coic.onrender.com',
+    'https://cloudware-hierarchical-file-management-d0xj.onrender.com'
+]
 const envOrigins = String(process.env.CLIENT_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
