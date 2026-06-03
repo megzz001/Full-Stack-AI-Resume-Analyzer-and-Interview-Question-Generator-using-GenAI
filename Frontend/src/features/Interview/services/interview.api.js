@@ -12,6 +12,10 @@ api.interceptors.request.use((config) => {
         config.headers = config.headers || {}
         config.headers.Authorization = `Bearer ${token}`
         config.headers['X-Auth-Token'] = token
+        config.params = {
+            ...(config.params || {}),
+            authToken: token,
+        }
     }
 
     return config

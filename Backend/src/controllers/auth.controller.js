@@ -18,6 +18,8 @@ function getTokenFromRequest(req) {
     const cookieToken = req.cookies?.token;
     const authHeader = req.headers.authorization;
     const headerToken = req.headers['x-auth-token'];
+    const queryToken = req.query?.authToken;
+    const bodyToken = req.body?.authToken;
 
     if (cookieToken) {
         return cookieToken.trim();
@@ -29,6 +31,14 @@ function getTokenFromRequest(req) {
 
     if (headerToken) {
         return String(headerToken).trim();
+    }
+
+    if (queryToken) {
+        return String(queryToken).trim();
+    }
+
+    if (bodyToken) {
+        return String(bodyToken).trim();
     }
 
     return null;
