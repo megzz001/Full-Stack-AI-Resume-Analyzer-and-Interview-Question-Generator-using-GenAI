@@ -17,6 +17,7 @@ function getAuthCookieOptions() {
 function getTokenFromRequest(req) {
     const cookieToken = req.cookies?.token;
     const authHeader = req.headers.authorization;
+    const headerToken = req.headers['x-auth-token'];
 
     if (cookieToken) {
         return cookieToken.trim();
@@ -24,6 +25,10 @@ function getTokenFromRequest(req) {
 
     if (authHeader) {
         return authHeader.replace(/^Bearer\s+/i, '').trim();
+    }
+
+    if (headerToken) {
+        return String(headerToken).trim();
     }
 
     return null;
