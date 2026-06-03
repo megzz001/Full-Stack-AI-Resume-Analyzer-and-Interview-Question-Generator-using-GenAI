@@ -1,10 +1,20 @@
 import axios from "axios";
-import { API_BASE_URL } from "../../../config/api.js";
+import { API_BASE_URL, getAuthToken } from "../../../config/api.js";
 
 const api = axios.create({
     baseURL: `${API_BASE_URL}/api/auth`,
     withCredentials: true
 });
+
+api.interceptors.request.use((config) => {
+    const token = getAuthToken()
+    if (token) {
+        config.headers = config.headers || {}
+        config.headers.Authorization = `Bearer ${token}`
+    }
+
+    return config
+})
 
 export async function register({ username, email, password }) {
 

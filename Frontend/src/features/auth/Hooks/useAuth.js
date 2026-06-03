@@ -1,6 +1,7 @@
 import { useContext, useEffect } from "react";
 import { AuthContext } from "../auth.context";
 import { login, logout, register, getMe } from "../services/auth.api";
+import { clearAuthToken, setAuthToken } from "../../../config/api.js";
 
 
 export const useAuth = () => {
@@ -12,6 +13,9 @@ export const useAuth = () => {
         try {
             const userData = await login({ email, password });
             setUser(userData.user);
+            if (userData.token) {
+                setAuthToken(userData.token);
+            }
             return userData;
         }
         catch (error) {
@@ -28,6 +32,9 @@ export const useAuth = () => {
         try {
             const userData = await register({ username, email, password });
             setUser(userData.user);
+            if (userData.token) {
+                setAuthToken(userData.token);
+            }
             return userData;
         }
         catch (error) {
@@ -44,6 +51,7 @@ export const useAuth = () => {
         try {
             await logout();
             setUser(null);
+            clearAuthToken();
         }
         catch (error) {
             console.error('Logout failed:', error);
